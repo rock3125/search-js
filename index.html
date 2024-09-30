@@ -62,11 +62,6 @@
 
 <script>
 
-    keycloak.init({}
-    ).catch(function() {
-        console.error('Failed to initialize Keycloak');
-    });
-
     $(document).on({
         ajaxStart: function() {
             $("body").css("cursor", "wait");
@@ -83,14 +78,19 @@
     });
 
     $(document).ready(function() {
+
+        init_keycloak();
+
         $('#searchBtn').on('click', () => {
             currentPage = 0;
             perform_search();
         });
+
         // set up close button on error dialog
         $('#errorClose').on('click', () => {
             $("#alertDialog").addClass("d-none").removeClass("show");
         });
+
         const search_ctrl = $('#searchQuery')
         search_ctrl.on('keydown', function (e) {
             if (e.key === 'Enter') {
@@ -105,33 +105,16 @@
             search_ctrl.val(query);
         }
 
-        keycloak.onAuthSuccess = () => {
-            console.log("onAuthSuccess")
-            if (keycloak && keycloak.token) {
-                set_cookie("kc", keycloak.token, window.ENV.session_length_in_minutes);
-                keycloak_authenticated(perform_search)
-            }
-        }
-
-        keycloak.onAuthRefreshSuccess = () => {
-            console.log("onAuthRefreshSuccess")
-            if (keycloak && keycloak.token) {
-                set_cookie("kc", keycloak.token, window.ENV.session_length_in_minutes);
-                keycloak_authenticated(perform_search)
-            }
-        }
-
-        const token = get_cookie("kc")
+        const token_data_str = get_cookie("kc")
         const session_id = get_session_id()
-        if (keycloak && !keycloak.token && !token) {
-            auto_login()
-        } else if (!session_id) {
-            sign_in(token, () => {
+        if (token_data_str && token_data_str.length > 0 && !session_id) {
+            const token_data = JSON.parse(token_data_str);
+            sign_in(token_data.token, () => {
                 perform_search()
             }, () => {
                 reset_auth()
             })
-        } else if (session_id) {
+        } else if (token_data && token_data.length > 0 && session_id) {
             perform_search()
         }
     });

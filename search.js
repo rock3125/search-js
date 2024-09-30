@@ -20,24 +20,109 @@ const keycloak = new Keycloak({
     url: window.ENV.kc_endpoint,
     realm: window.ENV.kc_realm,
     clientId: window.ENV.kc_client_id,
-    onLoad: 'check-sso',
-    //redirectUri: window.location.href,
     KeycloakResponseType: 'code',
-    checkLoginIframe: false,
+    checkLoginIframe: false
 });
 
+function get_keycloak_data() {
+    return JSON.stringify({token: keycloak.token, refreshToken: keycloak.refreshToken, idToken: keycloak.idToken})
+}
+
+/**
+ * initialize / set up keycloak
+ */
+function init_keycloak() {
+
+    keycloak.onAuthSuccess = () => {
+        console.log("onAuthSuccess")
+        if (keycloak && keycloak.token) {
+            set_cookie("kc", get_keycloak_data(), window.ENV.session_length_in_minutes);
+            keycloak_authenticated(perform_search)
+        }
+    }
+
+    keycloak.onAuthRefreshSuccess = () => {
+        console.log("onAuthRefreshSuccess")
+        if (keycloak && keycloak.token) {
+            set_cookie("kc", get_keycloak_data(), window.ENV.session_length_in_minutes);
+            keycloak_authenticated(undefined) // don't search again on auto-refresh
+        }
+    }
+
+    const token_data_str = get_cookie("kc")
+    if (token_data_str && token_data_str.length > 0) {
+        keycloak.init({ ...JSON.parse(token_data_str), onLoad: 'check-sso' })
+            .then(function(authenticated) {
+                if (authenticated) {
+                    console.log("Authenticated with stored token");
+                    schedule_token_refresh(); // Start token refresh scheduling
+                } else {
+                    console.warn("Not authenticated, redirecting to login");
+                    auto_login();
+                }
+            }).catch(function() {
+                console.error("Failed to initialize Keycloak");
+            });
+
+    } else {
+        keycloak.init({ onLoad: 'login-required' })
+            .then(function(authenticated) {
+                if (authenticated) {
+                    console.log("Authenticated, storing token in cookie");
+                    set_cookie("kc", get_keycloak_data(), window.ENV.session_length_in_minutes);
+                    schedule_token_refresh(); // Start token refresh scheduling
+                } else {
+                    console.warn("Not authenticated");
+                }
+            }).catch(function() {
+                console.error("Failed to initialize Keycloak");
+            });
+    }
+}
+
+// refresh the keycloak token
+function keycloak_refresh_token() {
+    keycloak.updateToken(window.ENV.session_length_in_minutes * 60000)
+        .then(function() {
+            schedule_token_refresh(); // Schedule the next refresh
+        }).catch(function() {
+            console.error("Failed to refresh the token");
+            auto_login();
+        });
+}
 
 /**
  * login in automatically
  */
 function auto_login() {
     if (!signed_in) {
-        setTimeout(() => {
-            if (keycloak && !signed_in)
-                keycloak.login({redirectUri: window.location.href});
-        }, 1000)
+        // setTimeout(() => {
+        //     if (keycloak && !signed_in) {
+        //         keycloak.login({redirectUri: window.location.href});
+        //     }
+        // }, 1000)
     }
 }
+
+
+/**
+ * set up an interval to refresh keycloak's token periodically
+ */
+function schedule_token_refresh() {
+    // set refresh timer to 10 seconds before token expiry
+    let refresh_interval = Math.floor((keycloak.tokenParsed.exp - (new Date().getTime() / 1000)) * 1000);
+    // take away 10 seconds if we have at least 10 seconds left at the end
+    if (refresh_interval > 70000)
+        refresh_interval -= 10000;
+    // but make sure we always have at least 60 seconds left before a refresh
+    if (refresh_interval < 60000)
+        refresh_interval = 60000;
+    console.log("refresh_interval:" + refresh_interval);
+    setTimeout(function() {
+        keycloak_refresh_token();
+    }, refresh_interval);
+}
+
 
 /**
  * display a generic error message
@@ -52,11 +137,6 @@ function set_error(message, error) {
     console.error(message);
     $("#errorMessage").text(message);
     $("#alertDialog").removeClass("d-none").addClass("show");
-    if (message === "no session") {
-        setTimeout(() => {
-            auto_login()
-        }, 2000)
-    }
 }
 
 /**
@@ -479,18 +559,6 @@ function url_to_bread_crumb(url) {
     return "";
 }
 
-function is_archive(url) {
-    const url_l = (url && url.toLowerCase) ? url.toLowerCase().trim() : '';
-    const length4 = url_l.length - 4;
-    const length3 = url_l.length - 3;
-    return (
-        url_l.lastIndexOf('.zip') === length4 ||
-        url_l.lastIndexOf('.tgz') === length4 ||
-        url_l.lastIndexOf('.gz') === length3 ||
-        url_l.lastIndexOf('.tar') === length4
-    );
-}
-
 function get_archive_child_last(url) {
     if (is_archive_file(url)) {
         const child = url.split(archive_marker)[1];
@@ -554,7 +622,7 @@ function pad2(item) {
 
 function is_viewable(url) {
     return url && url.startsWith && (url.trim().toLowerCase().startsWith(("https://")) ||
-        url.trim().toLowerCase().startsWith(("http://"))) && !is_archive_file(url);
+        url.trim().toLowerCase().startsWith(("http://")));
 }
 
 /**
@@ -583,30 +651,20 @@ function do_fetch(url, session_id) {
 
 function download_document(dl_url) {
     const session_id = get_session_id()
-    if (is_archive(dl_url)) {
-        alert("archive files cannot be downloaded");
-
-    } else if (!session_id || session_id.trim().length === 0) {
-        alert("you must sign-in to download documents");
-
-    } else {
-        const url = window.ENV.api_base + '/dms/binary/latest/' + encodeURIComponent(window.ENV.organisation_id) + '/' +
-            encodeURIComponent(getKbId()) + '/' + window.btoa(unescape(encodeURIComponent(dl_url)));
-        do_fetch(url, session_id);
+    if (!session_id) {
+        set_error("no session", null); // no session, can't download, no security
+        return;
     }
+    const url = window.ENV.api_base + '/dms/binary/latest/' + encodeURIComponent(window.ENV.organisation_id) + '/' +
+        encodeURIComponent(window.ENV.kb_id) + '/' + window.btoa(unescape(encodeURIComponent(dl_url)));
+    do_fetch(url, session_id);
 }
 
 // download url (open it or view it)
 function download(url) {
     const session_id = get_session_id()
     if (url.length > 0 && is_viewable(url)) {
-        const url_lwr = url.toLowerCase();
-        // fix Google-drive bug where we added an extra / to the end of /edit or /view
-        if (url_lwr.indexOf("google.com") > 0 && (url_lwr.endsWith("/edit/") || url_lwr.endsWith("/view/"))) {
-            url = url.substring(0, url.length - 1);
-        }
-        window.open(url, "_blank");
-
+        window.open(url.split(archive_marker)[0], "_blank");
     } else if (url.length > 0) {
         download_document(url, session_id);
     }
@@ -792,10 +850,11 @@ function setup_pagination(id) {
  * this calls SimSage (if it has to) and sets up a session for it
  */
 function keycloak_authenticated(on_success) {
-    const existing = get_cookie("kc");
-    if (existing) {
+    const existing_str = get_cookie("kc");
+    if (existing_str && existing_str.length > 0) {
         console.log('Keycloak Authenticated');
-        sign_in(existing, () => {
+        const existing = JSON.parse(existing_str);
+        sign_in(existing.token, () => {
             if (on_success) {
                 on_success()
             }
