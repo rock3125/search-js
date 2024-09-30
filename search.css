@@ -1,0 +1,125 @@
+
+.result-preview {
+    width: 150px;
+    height: auto;
+    max-height: 150px;
+    border-radius: 5px;
+}
+
+.search-primary {
+    font-weight: 400 !important;
+    background-color: #9bd21c50;
+    padding: .1rem .2rem;
+    border-radius: 2px;
+}
+
+.search-secondary {
+    font-weight: 600 !important;
+}
+
+.font-label {
+    font-size: small;
+    font-weight: 200;
+}
+
+.login-button {
+    border-left: 1px solid black;
+}
+
+.result-breadcrumb {
+    font-size: 11px;
+    padding: .25rem .6rem;
+    border-radius: 5px;
+    color: #20273170;
+    background-color: #f2f2f2;
+}
+
+.results-filename {
+    text-decoration: none;
+    font-weight: 400;
+    font-size: 20px;
+    color: #202731 !important;
+    line-height: 25px;
+    cursor: pointer;
+}
+.results-filename:hover {
+    text-decoration: underline;
+}
+
+.result-details-title {
+    font-size: 11px;
+    color: #00071170;
+    user-select: all;
+    max-width: 80%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.result-details {
+    font-size: 12px;
+    font-style: italic;
+    color: #20273170;
+}
+
+.message {
+    background: #eee;
+    box-shadow: 2px 2px 4px 0 rgba(0, 0, 0, 0.31);
+    border-radius: 1em;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 50em;
+}
+
+.message header {
+    background: #25ade8;
+    width:100%;
+    padding:.5em;
+}
+
+.message i:after{
+    content: url("images/friendly.png");
+    background: #25ade8;
+    font-style:normal;
+    color:#eee;
+    padding: 1em .75em;
+    font-size:1.25em;
+    display:block;
+    width: 2.5em;
+    height:100%;
+    text-align:center;
+}
+
+.message h2 {
+    margin: .75em;
+    font-size: 1.25em;
+    position: relative;
+    display: block;
+    width: calc(100% - 2.5em - 1.5em);
+}
+.message h2 span {
+    color:#25ade8;
+}
+
+.message h2 :after {
+    content:'';
+    width:100%;
+    height:100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.message .dialog-text {
+    font-size: 16px;
+}
+
+.message .insight-text {
+    font-size: 14px;
+}
+
+.warning-text {
+    font-size: 10px;
+    margin-top: 20px;
+}

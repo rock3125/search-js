@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link rel="icon" type="image/png" href="favicon.png?v=2.3" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="search.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@25.0.6/dist/keycloak.js"></script>
+    <script src="settings.js"></script>
+    <script src="search.js"></script>
+</head>
+<body>
+
+<div class="container mt-4">
+
+    <!-- Search Box -->
+    <div class="input-group mb-4">
+        <input type="text" class="form-control" id="searchQuery" placeholder="Search..." aria-label="Search">
+        <button class="btn btn-primary" id="searchBtn">Search</button>
+    </div>
+
+    <!-- error display for if anything goes wrong -->
+    <div id="alertDialog" class="alert alert-danger alert-dismissible fade show d-flex justify-content-between align-items-center d-none" role="alert">
+        <span id="errorMessage"></span>
+        <button id="errorClose" type="button" title="close this error dialog" class="close border-0" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+
+    <!-- AI response / intuition display area -->
+    <div id="aiDialog" class="message d-none">
+        <header></header>
+        <i></i>
+        <h2 id="aiContent">
+        </h2>
+    </div>
+
+    <!-- Pagination top -->
+    <nav>
+        <ul class="pagination justify-content-center mt-4" id="pagination-top"></ul>
+    </nav>
+
+    <!-- Results Container in two columns, along with the source selection control -->
+    <div class="row">
+        <div class="col-9">
+            <div id="results" class="list-group"></div>
+        </div>
+        <div class="col-3">
+            <div id="sources" class="list-group"></div>
+        </div>
+    </div>
+
+    <!-- Pagination bottom -->
+    <nav>
+        <ul class="pagination justify-content-center mt-4" id="pagination-bottom"></ul>
+    </nav>
+
+</div>
+
+<script>
+
+    keycloak.init({}
+    ).catch(function() {
+        console.error('Failed to initialize Keycloak');
+    });
+
+    $(document).on({
+        ajaxStart: function() {
+            $("body").css("cursor", "wait");
+            $("#searchQuery").prop("disabled", true);
+            $("#searchBtn").prop("disabled", true);
+            $(".page-link").prop("disabled", true);
+        },
+        ajaxStop: function() {
+            $("body").css("cursor", "default");
+            $("#searchQuery").prop("disabled", false);
+            $("#searchBtn").prop("disabled", false);
+            $(".page-link").prop("disabled", false);
+        }
+    });
+
+    $(document).ready(function() {
+        $('#searchBtn').on('click', () => {
+            currentPage = 0;
+            perform_search();
+        });
+        // set up close button on error dialog
+        $('#errorClose').on('click', () => {
+            $("#alertDialog").addClass("d-none").removeClass("show");
+        });
+        const search_ctrl = $('#searchQuery')
+        search_ctrl.on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                currentPage = 0;
+                perform_search();
+            }
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const query = urlParams.get('q');
+        if (query) {
+            search_ctrl.val(query);
+        }
+
+        keycloak.onAuthSuccess = () => {
+            console.log("onAuthSuccess")
+            if (keycloak && keycloak.token) {
+                set_cookie("kc", keycloak.token, window.ENV.session_length_in_minutes);
+                keycloak_authenticated(perform_search)
+            }
+        }
+
+        keycloak.onAuthRefreshSuccess = () => {
+            console.log("onAuthRefreshSuccess")
+            if (keycloak && keycloak.token) {
+                set_cookie("kc", keycloak.token, window.ENV.session_length_in_minutes);
+                keycloak_authenticated(perform_search)
+            }
+        }
+
+        const token = get_cookie("kc")
+        const session_id = get_session_id()
+        if (keycloak && !keycloak.token && !token) {
+            auto_login()
+        } else if (!session_id) {
+            sign_in(token, () => {
+                perform_search()
+            }, () => {
+                reset_auth()
+            })
+        } else if (session_id) {
+            perform_search()
+        }
+    });
+
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
