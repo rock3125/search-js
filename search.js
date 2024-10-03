@@ -4,6 +4,7 @@ let newest_first = false;
 let result_list = [];
 // the active knowledge-base
 let kb = null;
+let kb_has_llm = false;
 let source_list = [];    // list of all sources
 let source_values = {};     // list of selected source-id -> bool
 let source_counts = {};     // list source-id -> count
@@ -14,6 +15,8 @@ let num_documents = 0;
 // have we signed in?
 let signed_in = false;
 const archive_marker = ":::";
+// is the document chat dialog being displayed?
+let query_ai_showing = false;
 
 // define the Keycloak basic class for SimSage (see settings.js)
 const keycloak = new Keycloak({
@@ -117,7 +120,6 @@ function schedule_token_refresh() {
     // but make sure we always have at least 60 seconds left before a refresh
     if (refresh_interval < 60000)
         refresh_interval = 60000;
-    console.log("refresh_interval:" + refresh_interval);
     setTimeout(function() {
         keycloak_refresh_token();
     }, refresh_interval);
@@ -216,6 +218,7 @@ function search(text,
             if (response && response.kbList && response.kbList.length > 0) {
                 kb = response.kbList.find((kb) => kb.id === window.ENV.kb_id);
                 if (kb) {
+                    kb_has_llm = kb.hasLLM ?? false;
                     source_list = kb.sourceList ?? [];
                 } else {
                     source_list = [];
@@ -260,7 +263,7 @@ function search(text,
         groupSimilarDocuments: false,
         sortByAge: newest_first,
         sourceId: '',
-        useQuestionAnsweringAi: window.ENV.use_ai,
+        useQuestionAnsweringAi: window.ENV.use_ai && kb_has_llm,
         wordSynSet: {}
     };
 
@@ -280,6 +283,7 @@ function search(text,
             } else {
                 source_counts = {};
             }
+
             if (success_callback) {
                 success_callback(response);
             }
@@ -465,6 +469,7 @@ function display_search_results(data) {
     if (data && data.resultList) {
         result_list = data.resultList;
         num_documents = data.totalDocumentCount;
+        close_query_ai();
         display_results();
         setup_sources();
         setup_pagination("pagination-top");
@@ -497,11 +502,25 @@ function display_ai(data) {
             ai_text.append(`<div class="warning-text">Generative AI can make mistakes. Consider checking important information.</div>`)
             ai_dialog.removeClass("d-none").addClass("show");
         } else {
-            ai_dialog.addClass("d-none").removeClass("show");
+            hide_ai();
         }
     }
 }
 
+// hide the AI single response dialog
+function hide_ai() {
+    $('#aiDialog').addClass("d-none").removeClass("show");
+}
+
+// set focus on the search box
+function focus_search_box() {
+    // set focus on the search box
+    if (!query_ai_showing) {
+        setTimeout(() => {
+            $("#searchQuery").focus();
+        }, 500)
+    }
+}
 
 /**
  *  perform a SimSage search, read the search string contents and do it
@@ -520,6 +539,7 @@ function perform_search() {
         display_search_results(data);
         // display AI dialog if we have some AI text to display
         display_ai(data);
+        focus_search_box();
     });
 }
 
@@ -720,6 +740,18 @@ function display_results() {
         } else {
             last_modified_str += `</div>`
         }
+
+        // allow for AI use?
+        let ai_converse_ctrl = "";
+        if (window.ENV.use_ai && kb_has_llm) {
+            ai_converse_ctrl = `<span class="qna-image" title="converse with this document" 
+                                    onclick="show_query_ai('${result.url}', ${result.urlId}, '${result.title}')">
+                                    <span class="in-circle">
+                                        <img class="circle-image-size" src="./images/conversation-icon.svg" alt="conversation" />
+                                    </span>
+                                </span>`
+        }
+
         const resultItem = `
             <div class="d-flex pb-4 mb-3 px-3 col-12">
                 <img src="${preview_image_url(result)}" alt="${result.title}"
@@ -729,6 +761,7 @@ function display_results() {
                     <div class="d-flex align-items-center text-align-end mb-1"><p class="mb-0 result-breadcrumb me-2">${url_breadcrumb}</p></div>
                     <span class="mb-2 results-filename text-break pointer-cursor" 
                         onclick="download('${url}')" title="download ${result.title}">${result.title}</span>
+                    ${ai_converse_ctrl}
                     <div class="d-flex align-items-center mb-1">${control_str}</div>
                     ${last_modified_str}
                     <div><p class="small fw-light mb-2">${highlight(result.textList)}</p></div>
@@ -784,13 +817,31 @@ function setup_sources() {
 
 // clear search et alia in the UX
 function reset_search() {
-    result_list = [];
-    num_documents = 0;
-    source_counts = {};
-    $('#results').empty();
-    $('#pagination-top').empty();
-    $('#pagination-bottom').empty();
-    setup_sources();
+    // just close the query ai dialog box?
+    if (query_ai_showing) {
+        close_query_ai();
+        focus_search_box();
+    } else {
+        result_list = [];
+        num_documents = 0;
+        source_counts = {};
+        // remove search query
+        const url = new URL(window.location);
+        url.searchParams.delete('q');
+        window.history.replaceState({}, '', url);
+        // empty search box
+        $("#searchQuery").val('');
+        // empty controls on page
+        $('#results').empty();
+        $('#pagination-top').empty();
+        $('#pagination-bottom').empty();
+        // set up source list
+        setup_sources();
+        // hide AI components
+        hide_ai();
+        close_query_ai();
+        focus_search_box();
+    }
 }
 
 /**
@@ -865,5 +916,12 @@ function keycloak_authenticated(on_success) {
         console.log("no kc cookie");
         auto_login();
     }
+}
+
+// deep copy a json object
+function copy(json_object) {
+    if (json_object !== null && json_object !== undefined)
+        return JSON.parse(JSON.stringify(json_object));
+    return json_object;
 }
 
