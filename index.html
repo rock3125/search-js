@@ -82,6 +82,8 @@
 
 <script>
 
+    const search_ctrl = $('#searchQuery')
+
     $(document).on({
         ajaxStart: function() {
             $("body").css("cursor", "wait");
@@ -105,12 +107,24 @@
         }
     });
 
+    window.addEventListener("popstate", function(event) {
+        const query_string = window.location.search;
+        const urlParams = new URLSearchParams(query_string);
+        const query = urlParams.get('q');
+        if (query) {
+            search_ctrl.val(query);
+            perform_search();
+        }
+    });
+
     $(document).ready(function() {
 
         init_keycloak();
 
         $('#searchBtn').on('click', () => {
             currentPage = 0;
+            const url_path = window.location.origin + window.location.pathname;
+            history.pushState({}, "", url_path + "?q=" + encodeURIComponent(query));
             perform_search();
         });
 
@@ -119,10 +133,11 @@
             $("#alertDialog").addClass("d-none").removeClass("show");
         });
 
-        const search_ctrl = $('#searchQuery')
         search_ctrl.on('keydown', function (e) {
             if (e.key === 'Enter') {
                 currentPage = 0;
+                const url_path = window.location.origin + window.location.pathname;
+                history.pushState({}, "", url_path + "?q=" + encodeURIComponent(query));
                 perform_search();
             }
         });
